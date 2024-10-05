@@ -1,88 +1,59 @@
-import openai
 import os
+import openai
+from dotenv import load_dotenv
 
-# Configurações de API
-openai.api_key = "SUA_API_KEY_OPENAI"
+# Carrega variáveis de ambiente
+load_dotenv()
 
-# Definir o limite de tokens por requisição para o modelo (aproximadamente 4096 tokens por vez, ajustável)
-LIMITE_TOKENS = 3500  # Mantendo uma margem de segurança
+# Configuração da API
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
+def texto_para_audio(texto, nome_arquivo):
+    try:
+        response = openai.audio.speech.create(
+            model="tts-1",  # Modelo para texto para fala
+            voice="alloy",  # Você pode escolher outra voz se desejar
+            input=texto
+        )
 
-# Função para dividir o texto em partes respeitando o limite de tokens
-def dividir_texto(texto, limite_tokens):
-    partes = []
-    palavras = texto.split()  # Dividimos o texto em palavras
-    parte_atual = []
-    total_tokens = 0
+        # Salva o arquivo de áudio
+        with open(nome_arquivo, "wb") as f:
+            f.write(response.content)
+        print(f"Áudio salvo em: {nome_arquivo}")
 
-    for palavra in palavras:
-        # Estimativa simples: 1 palavra ≈ 1 token (pode variar dependendo do conteúdo)
-        total_tokens += 1
-        parte_atual.append(palavra)
-
-        if total_tokens >= limite_tokens:
-            partes.append(' '.join(parte_atual))  # Adiciona a parte ao array
-            parte_atual = []
-            total_tokens = 0
-
-    # Adicionar qualquer resto do texto que não completou um bloco
-    if parte_atual:
-        partes.append(' '.join(parte_atual))
-
-    return partes
+    except openai.error.OpenAIError as e:
+        print(f"Erro na API OpenAI: {e}")
+    except Exception as e:
+        print(f"Ocorreu um erro ao converter texto para áudio: {e}")
 
 
-# Função para converter texto em áudio com a OpenAI
-def texto_para_audio(texto, nome_arquivo_audio):
-    response = openai.Audio.create(
-        model="whisper-1",
-        input={"prompt": texto, "language": "pt-BR"}  # Ajustar o idioma, se necessário
-    )
-    # Salvar o áudio recebido como MP3
-    with open(nome_arquivo_audio, 'wb') as f:
-        f.write(response['audio'])
+def ler_arquivo(caminho_arquivo):
+    with open(caminho_arquivo, 'r', encoding='utf-8') as f:
+        return f.read()
 
 
-# Função principal para processar o livro e gerar os áudios
-def processar_livro(livro_path):
-    # Extrair o nome do arquivo (sem extensão) para usar como nome da pasta de saída
-    nome_livro = os.path.splitext(os.path.basename(livro_path))[0]
+def processar_arquivo(caminho_arquivo):
+    nome_arquivo = os.path.basename(caminho_arquivo)
+    nome_livro = os.path.splitext(nome_arquivo)[0]
 
-    # Criar a pasta de saída com o nome do livro
-    pasta_saida = os.path.join(os.path.dirname(livro_path), nome_livro)
-    if not os.path.exists(pasta_saida):
-        os.makedirs(pasta_saida)
+    conteudo = ler_arquivo(caminho_arquivo)
 
-    # Ler o livro inteiro
-    with open(livro_path, 'r', encoding='utf-8') as f:
-        conteudo_livro = f.read()
+    # Dividir o texto em partes menores (idealmente testar com < 1000 caracteres)
+    partes = [conteudo[i:i + 1000] for i in range(0, len(conteudo), 1000)]
 
-    # Dividir o livro em partes menores
-    partes_livro = dividir_texto(conteudo_livro, LIMITE_TOKENS)
-
-    # Para cada parte, enviar para a OpenAI gerar o áudio e salvar
-    for i, parte in enumerate(partes_livro):
-        nome_arquivo_audio = os.path.join(pasta_saida, f"{nome_livro}_parte_{i + 1}.mp3")
-        print(f"Gerando áudio para parte {i + 1} de {len(partes_livro)}...")
-
-        # Chamar a API e salvar o arquivo
-        texto_para_audio(parte, nome_arquivo_audio)
-
-        print(f"Áudio da parte {i + 1} salvo em: {nome_arquivo_audio}")
+    # Gerar áudio para cada parte
+    for index, parte in enumerate(partes):
+        nome_arquivo_audio = f"{nome_livro}_parte_{index + 1}.mp3"
+        caminho_audio = os.path.join(os.path.dirname(caminho_arquivo), nome_arquivo_audio)
+        texto_para_audio(parte, caminho_audio)
 
 
-# Função para processar todos os livros na pasta 'books'
-def processar_livros_na_pasta(pasta_livros):
-    # Listar todos os arquivos de texto na pasta
-    for arquivo in os.listdir(pasta_livros):
-        if arquivo.endswith('.txt'):
-            livro_path = os.path.join(pasta_livros, arquivo)
-            print(f"Processando livro: {arquivo}")
-            processar_livro(livro_path)
+def processar_pasta_livros(pasta_livro):
+    for arquivo in os.listdir(pasta_livro):
+        if arquivo.endswith(".txt"):
+            caminho_arquivo = os.path.join(pasta_livro, arquivo)
+            processar_arquivo(caminho_arquivo)
 
-
-# Definir o caminho da pasta 'books'
-pasta_books = "caminho/para/sua/pasta/books"
-
-# Processar todos os livros na pasta
-processar_livros_na_pasta(pasta_books)
+if __name__ == "__main__":
+    pasta_livro = "books"  # A pasta onde estão os livros
+    processar_pasta_livros(pasta_livro)
