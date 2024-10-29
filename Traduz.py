@@ -8,6 +8,7 @@ import re
 
 # Baixar recursos necessários do NLTK
 nltk.download('punkt', quiet=True)
+nltk.download('punkt_tab', quiet=True)  # Adicionado
 nltk.download('stopwords', quiet=True)
 
 def read_docx(file_path):
@@ -80,12 +81,12 @@ def process_file(file_path, num_words=200):
         new_doc.add_paragraph(translated_word)
 
     # Salvar o novo documento com o sufixo '-A0' na mesma pasta
-    new_file_name = 'docsx/DomQuixote-A0.docx'
+    new_file_name = 'docsx/Brothers-Karamazov-1-A0.docx'
     new_doc.save(new_file_name)
     print(f"Processado: {file_path} -> {new_file_name}")
 
 # Caminho do arquivo .docx a ser processado
-file_path = 'DomQuixote.docx'  # Nome do arquivo fixo
+file_path = 'docsx/Brothers-Karamazov-1.docx'  # Nome do arquivo fixo
 num_words = 200  # Número de palavras mais comuns a serem obtidas
 
 process_file(file_path, num_words)
