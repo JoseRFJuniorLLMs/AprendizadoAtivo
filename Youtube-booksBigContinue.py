@@ -10,7 +10,7 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Nome do arquivo para registrar o progresso
-PROGRESSO_FILE = "progresso.json"
+PROGRESSO_FILE = "progressohipnose.json"
 
 
 def carregar_progresso():
@@ -30,7 +30,7 @@ def salvar_progresso(pasta_livro, nome_livro, parte):
 def texto_para_audio(texto, nome_arquivo):
     try:
         response = openai.audio.speech.create(
-            model="tts-1",  # Modelo para texto para fala
+            model="tts-1",  # Modelo para texto para fala: tts-1
             voice="nova",  # Alterado para a voz "nova"
             input=texto
         )
@@ -85,5 +85,5 @@ def processar_pasta_livros(pasta_livro):
 
 
 if __name__ == "__main__":
-    pasta_livro = "booksOsho"  # A pasta onde estão os livros
+    pasta_livro = "olho"  # A pasta onde estão os livros
     processar_pasta_livros(pasta_livro)

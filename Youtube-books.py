@@ -55,5 +55,5 @@ def processar_pasta_livros(pasta_livro):
             processar_arquivo(caminho_arquivo)
 
 if __name__ == "__main__":
-    pasta_livro = "books"  # A pasta onde estão os livros
+    pasta_livro = "hipnose"  # A pasta onde estão os livros
     processar_pasta_livros(pasta_livro)

@@ -8,8 +8,9 @@ import re
 
 # Baixar recursos necessários do NLTK
 nltk.download('punkt', quiet=True)
-nltk.download('punkt_tab', quiet=True)  # Adicionado
+nltk.download('punkt_tab', quiet=True)
 nltk.download('stopwords', quiet=True)
+
 
 def read_docx(file_path):
     """Lê o arquivo .docx e retorna o texto completo."""
@@ -19,9 +20,11 @@ def read_docx(file_path):
         full_text.append(para.text)
     return ' '.join(full_text)
 
+
 def is_valid_word(word):
     """Verifica se a palavra é válida (somente alfanumérica e não contém caracteres especiais)."""
     return bool(re.match(r'^[A-Za-zÀ-ÿ0-9]+$', word))
+
 
 def get_top_words(text, n=100):
     """Obtém as n palavras mais comuns do texto, excluindo stopwords."""
@@ -30,6 +33,7 @@ def get_top_words(text, n=100):
     tokens = [word for word in tokens if is_valid_word(word) and word not in stop_words]
     word_counts = Counter(tokens)
     return word_counts.most_common(n)
+
 
 def translate_word(word):
     """Traduz uma única palavra usando o Google Translate."""
@@ -40,17 +44,40 @@ def translate_word(word):
         print(f"Erro ao traduzir '{word}': {e}")
         return None
 
+
 def replace_word_in_doc(doc, word, translation):
     """
-    Substitui a palavra no documento pelo seu equivalente em inglês,
+    Substitui a palavra no documento pelo seu equivalente em inglês em negrito,
     garantindo que seja uma correspondência exata e ignorando maiúsculas/minúsculas.
     """
     for para in doc.paragraphs:
+        # Armazenar o texto original do parágrafo
+        original_text = para.text
+
+        # Se a palavra não estiver no parágrafo, pule para o próximo
+        if word.lower() not in original_text.lower():
+            continue
+
+        # Limpar todos os runs existentes no parágrafo
         for run in para.runs:
-            if word.lower() in run.text.lower():
-                # Realiza a substituição da palavra
-                run.text = re.sub(rf'\b{word}\b', translation, run.text, flags=re.IGNORECASE)
+            run.clear()
+
+        # Dividir o texto em partes
+        parts = re.split(rf'(\b{word}\b)', original_text, flags=re.IGNORECASE)
+
+        # Recriar o parágrafo com as partes apropriadas
+        para.clear()
+        for part in parts:
+            if part.lower() == word.lower():
+                # Adiciona a tradução em negrito
+                run = para.add_run(translation)
+                run.bold = True
+            else:
+                # Mantém o texto original sem formatação
+                run = para.add_run(part)
+
     return doc
+
 
 def process_file(file_path, num_words=200):
     """Processa o arquivo .docx especificado."""
@@ -76,17 +103,21 @@ def process_file(file_path, num_words=200):
         translated_words_list.append(f"{word} - {translation}")
 
     # Adicionar a lista de palavras traduzidas ao documento
-    new_doc.add_paragraph("Lista de palavras traduzidas:")
+    new_doc.add_paragraph("\nLista de palavras traduzidas:").bold = True
     for translated_word in translated_words_list:
-        new_doc.add_paragraph(translated_word)
+        paragraph = new_doc.add_paragraph()
+        word, translation = translated_word.split(" - ")
+        paragraph.add_run(f"{word} - ").bold = False
+        paragraph.add_run(f"{translation}").bold = True
 
     # Salvar o novo documento com o sufixo '-A0' na mesma pasta
-    new_file_name = 'docsx/ativo/Crime e Castigo - Fiodor Dostoievski-A0.docx'
+    new_file_name = 'docsx/ativo/O Pequeno Principe - Antoine de Saint-Exupery-A0.docx'
     new_doc.save(new_file_name)
     print(f"Processado: {file_path} -> {new_file_name}")
 
+
 # Caminho do arquivo .docx a ser processado
-file_path = 'docsx/ativo/Crime e Castigo - Fiodor Dostoievski.docx'
+file_path = 'docsx/ativo/O Pequeno Principe - Antoine de Saint-Exupery.docx'
 num_words = 200  # Número de palavras mais comuns a serem obtidas
 
 process_file(file_path, num_words)
