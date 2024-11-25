@@ -32,12 +32,21 @@ def generate_example_sentences(word_pairs, num_sentences=1):
         # Configuração da requisição para o Ollama
         url = "http://localhost:11434/api/generate"
         data = {
-            "model": "llama2:latest",
+            "model": "llama3.2:latest",
             "prompt": prompt,
-            "stream": False
+            "stream": False,
+            "options": {
+                "temperature": 0.7,
+                "top_p": 0.9
+            }
         }
 
         try:
+            # Verificar se o Ollama está rodando
+            health_check = requests.get("http://localhost:11434/api/tags")
+            if health_check.status_code != 200:
+                raise Exception("Ollama server is not running")
+
             response = requests.post(url, json=data)
             if response.status_code == 200:
                 response_data = response.json()
@@ -50,11 +59,15 @@ def generate_example_sentences(word_pairs, num_sentences=1):
                     })
             else:
                 print(f"Erro ao gerar frase para {pt_word}/{en_word}: Status code {response.status_code}")
+                print(f"Response: {response.text}")
+        except requests.exceptions.ConnectionError:
+            print(
+                f"Erro de conexão com o Ollama. Certifique-se de que o servidor está rodando em http://localhost:11434")
+            return example_sentences
         except Exception as e:
             print(f"Erro ao gerar frase para {pt_word}/{en_word}: {str(e)}")
 
     return example_sentences
-
 
 def read_docx(file_path):
     """Lê o arquivo .docx e retorna o texto completo."""
