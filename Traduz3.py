@@ -5,69 +5,12 @@ import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 import re
-import requests
-import json
 
 # Baixar recursos necessários do NLTK
 nltk.download('punkt', quiet=True)
 nltk.download('punkt_tab', quiet=True)
 nltk.download('stopwords', quiet=True)
 
-
-def generate_example_sentences(word_pairs, num_sentences=1):
-    """
-    Gera frases de exemplo usando o Ollama para cada par de palavras traduzidas.
-
-    Args:
-        word_pairs: Lista de tuplas (palavra_pt, palavra_en)
-        num_sentences: Número de frases para cada par de palavras
-    """
-    example_sentences = []
-
-    for pt_word, en_word in word_pairs:
-        prompt = f"""Generate {num_sentences} simple example sentence(s) in English using the word '{en_word}' (which is the translation of the Portuguese word '{pt_word}'). 
-        Make the sentence easy to understand for a Portuguese speaker learning English.
-        Format: Just return the sentence(s), one per line."""
-
-        # Configuração da requisição para o Ollama
-        url = "http://localhost:11434/api/generate"
-        data = {
-            "model": "llama3.2:latest",
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": 0.7,
-                "top_p": 0.9
-            }
-        }
-
-        try:
-            # Verificar se o Ollama está rodando
-            health_check = requests.get("http://localhost:11434/api/tags")
-            if health_check.status_code != 200:
-                raise Exception("Ollama server is not running")
-
-            response = requests.post(url, json=data)
-            if response.status_code == 200:
-                response_data = response.json()
-                sentences = response_data['response'].strip().split('\n')
-                for sentence in sentences:
-                    example_sentences.append({
-                        'pt_word': pt_word,
-                        'en_word': en_word,
-                        'sentence': sentence.strip()
-                    })
-            else:
-                print(f"Erro ao gerar frase para {pt_word}/{en_word}: Status code {response.status_code}")
-                print(f"Response: {response.text}")
-        except requests.exceptions.ConnectionError:
-            print(
-                f"Erro de conexão com o Ollama. Certifique-se de que o servidor está rodando em http://localhost:11434")
-            return example_sentences
-        except Exception as e:
-            print(f"Erro ao gerar frase para {pt_word}/{en_word}: {str(e)}")
-
-    return example_sentences
 
 def read_docx(file_path):
     """Lê o arquivo .docx e retorna o texto completo."""
@@ -105,26 +48,46 @@ def translate_word(word):
 def replace_word_in_doc(doc, word, translation):
     """
     Substitui a palavra no documento pelo seu equivalente em inglês em negrito,
-    garantindo que seja uma correspondência exata e ignorando maiúsculas/minúsculas.
+    garantindo que seja uma correspondência exata e ignorando maiúsculas/minúsculas,
+    e preservando a formatação original do texto.
     """
     for para in doc.paragraphs:
-        original_text = para.text
-
-        if word.lower() not in original_text.lower():
+        # Se a palavra não estiver no parágrafo, pule para o próximo
+        if word.lower() not in para.text.lower():
             continue
 
-        for run in para.runs:
-            run.clear()
-
-        parts = re.split(rf'(\b{word}\b)', original_text, flags=re.IGNORECASE)
-
+        # Criar uma cópia dos runs originais
+        original_runs = list(para.runs)
         para.clear()
-        for part in parts:
-            if part.lower() == word.lower():
-                run = para.add_run(translation)
-                run.bold = True
-            else:
-                run = para.add_run(part)
+
+        # Recriar o parágrafo preservando a formatação original
+        for run in original_runs:
+            # Dividir o texto do run
+            parts = re.split(rf'(\b{word}\b)', run.text, flags=re.IGNORECASE)
+
+            for part in parts:
+                new_run = para.add_run(part)
+
+                # Copiar todas as propriedades de formatação do run original
+                new_run.bold = run.bold
+                new_run.italic = run.italic
+                new_run.underline = run.underline
+
+                # Verificar e copiar propriedades de fonte se possível
+                try:
+                    if run.font:
+                        if new_run.font:
+                            new_run.font.name = run.font.name
+                            new_run.font.size = run.font.size
+                            if run.font.color and run.font.color.rgb:
+                                new_run.font.color.rgb = run.font.color.rgb
+                except Exception as e:
+                    print(f"Erro ao copiar propriedades de fonte: {e}")
+
+                # Se a parte for a palavra a ser substituída, adicionar a tradução em negrito
+                if part.lower() == word.lower():
+                    new_run.text = translation
+                    new_run.bold = True
 
     return doc
 
@@ -140,26 +103,19 @@ def process_file(file_path, num_words=200):
     # Traduzir e substituir as palavras no documento
     new_doc = docx.Document(file_path)
     translated_words = {}
-    word_pairs = []  # Lista para armazenar pares de palavras (pt, en)
-
     for word, _ in top_words:
         if is_valid_word(word):
             translation = translate_word(word)
             if translation:
                 translated_words[word] = translation
-                word_pairs.append((word, translation))
                 new_doc = replace_word_in_doc(new_doc, word, translation)
 
-    # Gerar frases de exemplo usando o Ollama
-    print("Gerando frases de exemplo...")
-    example_sentences = generate_example_sentences(word_pairs)
-
-    # Criar uma lista das palavras traduzidas com frases de exemplo
+    # Criar uma lista das palavras traduzidas
     translated_words_list = []
     for word, translation in translated_words.items():
         translated_words_list.append(f"{word} - {translation}")
 
-    # Adicionar a lista de palavras traduzidas e frases ao documento
+    # Adicionar a lista de palavras traduzidas ao documento
     new_doc.add_paragraph("\nLista de palavras traduzidas:").bold = True
     for translated_word in translated_words_list:
         paragraph = new_doc.add_paragraph()
@@ -167,22 +123,14 @@ def process_file(file_path, num_words=200):
         paragraph.add_run(f"{word} - ").bold = False
         paragraph.add_run(f"{translation}").bold = True
 
-        # Adicionar frases de exemplo para esta palavra
-        sentences = [s['sentence'] for s in example_sentences if s['pt_word'] == word]
-        if sentences:
-            for sentence in sentences:
-                example_para = new_doc.add_paragraph()
-                example_para.add_run("Example: ").italic = True
-                example_para.add_run(sentence)
-
-    # Salvar o novo documento
-    new_file_name = 'docsx/ativo/O Pequeno Principe - Antoine de Saint-Exupery-A0.docx'
+    # Salvar o novo documento com o sufixo '-A0' na mesma pasta
+    new_file_name = 'docsx/ativo/Capitaes da Areia - Jorge Amado-A0.docx'
     new_doc.save(new_file_name)
     print(f"Processado: {file_path} -> {new_file_name}")
 
 
 # Caminho do arquivo .docx a ser processado
-file_path = 'docsx/ativo/O Pequeno Principe - Antoine de Saint-Exupery.docx'
+file_path = 'docsx/ativo/Capitaes da Areia - Jorge Amado.docx'
 num_words = 200  # Número de palavras mais comuns a serem obtidas
 
 process_file(file_path, num_words)

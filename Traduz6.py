@@ -5,10 +5,11 @@ import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 import re
+import requests
+from tqdm import tqdm
 
 # Baixar recursos necessários do NLTK
 nltk.download('punkt', quiet=True)
-nltk.download('punkt_tab', quiet=True)
 nltk.download('stopwords', quiet=True)
 
 
@@ -28,10 +29,12 @@ def is_valid_word(word):
 
 def get_top_words(text, n=100):
     """Obtém as n palavras mais comuns do texto, excluindo stopwords."""
+    print("Analisando palavras mais comuns...")
     tokens = word_tokenize(text.lower())
     stop_words = set(stopwords.words('portuguese'))
     tokens = [word for word in tokens if is_valid_word(word) and word not in stop_words]
     word_counts = Counter(tokens)
+    print(f"Encontradas {len(tokens)} palavras válidas.")
     return word_counts.most_common(n)
 
 
@@ -46,71 +49,61 @@ def translate_word(word):
 
 
 def replace_word_in_doc(doc, word, translation):
-    """
-    Substitui a palavra no documento pelo seu equivalente em inglês em negrito,
-    garantindo que seja uma correspondência exata e ignorando maiúsculas/minúsculas.
-    """
+    """Substitui a palavra no documento pelo seu equivalente em inglês em negrito."""
     for para in doc.paragraphs:
-        # Armazenar o texto original do parágrafo
-        original_text = para.text
-
-        # Se a palavra não estiver no parágrafo, pule para o próximo
-        if word.lower() not in original_text.lower():
-            continue
-
-        # Limpar todos os runs existentes no parágrafo
-        for run in para.runs:
-            run.clear()
-
-        # Dividir o texto em partes
-        parts = re.split(rf'(\b{word}\b)', original_text, flags=re.IGNORECASE)
-
-        # Recriar o parágrafo com as partes apropriadas
-        para.clear()
-        for part in parts:
-            if part.lower() == word.lower():
-                # Adiciona a tradução em negrito
-                run = para.add_run(translation)
-                run.bold = True
-            else:
-                # Mantém o texto original sem formatação
-                run = para.add_run(part)
-
+        if word.lower() in para.text.lower():
+            runs = para.runs
+            new_runs = []
+            for run in runs:
+                parts = re.split(rf'(\b{word}\b)', run.text, flags=re.IGNORECASE)
+                for part in parts:
+                    if part.lower() == word.lower():
+                        new_run = para.add_run(translation)
+                        new_run.bold = True
+                        new_runs.append(new_run)
+                    else:
+                        new_run = para.add_run(part)
+                        new_run.bold = run.bold
+                        new_run.italic = run.italic
+                        new_run.underline = run.underline
+                        new_runs.append(new_run)
+            para.clear()
+            for new_run in new_runs:
+                para.add_run(new_run.text)
     return doc
 
 
 def process_file(file_path, num_words=200):
     """Processa o arquivo .docx especificado."""
-    # Ler o documento
+    print(f"Iniciando o processamento do arquivo: {file_path}")
+    print("Lendo o arquivo...")
     text = read_docx(file_path)
 
-    # Obter as n palavras mais comuns
+    print("Obtendo as palavras mais comuns...")
     top_words = get_top_words(text, num_words)
 
-    # Traduzir e substituir as palavras no documento
+    print("Traduzindo palavras e substituindo no documento...")
     new_doc = docx.Document(file_path)
     translated_words = {}
-    for word, _ in top_words:
-        if is_valid_word(word):
-            translation = translate_word(word)
-            if translation:
-                translated_words[word] = translation
-                new_doc = replace_word_in_doc(new_doc, word, translation)
+    word_pairs = []
 
-    # Criar uma lista das palavras traduzidas
-    translated_words_list = []
-    for word, translation in translated_words.items():
-        translated_words_list.append(f"{word} - {translation}")
+    with tqdm(total=len(top_words), desc="Traduzindo e substituindo palavras") as pbar:
+        for word, _ in top_words:
+            if is_valid_word(word):
+                translation = translate_word(word)
+                if translation:
+                    translated_words[word] = translation
+                    word_pairs.append((word, translation))
+                    new_doc = replace_word_in_doc(new_doc, word, translation)
+            pbar.update(1)
 
-    # Adicionar a lista de palavras traduzidas ao documento
+    print("Adicionando palavras traduzidas ao final do documento...")
     new_doc.add_paragraph("\nLista de palavras traduzidas:").bold = True
-    for translated_word in translated_words_list:
+    for word, translation in translated_words.items():
         paragraph = new_doc.add_paragraph()
-        word, translation = translated_word.split(" - ")
         paragraph.add_run(f"{word} - ").bold = False
         paragraph.add_run(f"{translation}").bold = True
 
-    # Salvar o novo documento com o sufixo '-A0' na mesma pasta
     new_file_name = 'docsx/ativo/Capitaes da Areia - Jorge Amado-A0.docx'
     new_doc.save(new_file_name)
     print(f"Processado: {file_path} -> {new_file_name}")
